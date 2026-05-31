@@ -69,14 +69,25 @@ export const DEFAULT_HARD: HardBucketConfig = {
 };
 export const DEFAULT_STALE_AFTER_MS = 24 * 60 * 60_000;
 
+/** True for an individual loopback token: all of 127.0.0.0/8 (loopback by
+ *  RFC 1122), `::1`, IPv4-mapped-IPv6 loopback (`::ffff:127.x.x.x`), and
+ *  `localhost`. Broadening to 127/8 + the mapped form is safe — every address
+ *  matched is genuinely loopback, so this only ever exempts a real local
+ *  caller, never widens trust to a remote one. */
+function isLoopbackToken(token: string): boolean {
+  const s = token.trim().toLowerCase();
+  if (s === 'localhost' || s === '::1') return true;
+  // Strip an IPv4-mapped-IPv6 prefix, e.g. ::ffff:127.0.0.1.
+  const v4 = s.startsWith('::ffff:') ? s.slice('::ffff:'.length) : s;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
+}
+
 /** True for loopback addresses (handles x-forwarded-for chains by taking
  *  the leftmost/origin hop). Pure helper, reusable on its own. */
 export function isLoopbackIp(ip: string | null | undefined): boolean {
   if (!ip) return false;
-  const trimmed = ip.trim();
-  if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === 'localhost') return true;
-  const leftmost = trimmed.split(',')[0].trim();
-  return leftmost === '127.0.0.1' || leftmost === '::1';
+  // X-Forwarded-For may be a comma list; the leftmost is the origin client.
+  return isLoopbackToken(ip.split(',')[0]);
 }
 
 function normalize(raw: StoredBucket): BucketPayload {

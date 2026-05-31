@@ -108,4 +108,15 @@ describe('isLoopbackIp', () => {
     expect(isLoopbackIp('127.0.0.1, 10.0.0.5')).toBe(true);
     expect(isLoopbackIp('10.0.0.5, 127.0.0.1')).toBe(false);
   });
+
+  it('recognizes IPv4-mapped-IPv6 loopback and all of 127/8', () => {
+    expect(isLoopbackIp('::ffff:127.0.0.1')).toBe(true);
+    expect(isLoopbackIp('::FFFF:127.0.0.1')).toBe(true); // case-insensitive
+    expect(isLoopbackIp('127.0.0.53')).toBe(true); // 127/8 is all loopback
+    expect(isLoopbackIp('127.1.2.3')).toBe(true);
+    expect(isLoopbackIp(' ::ffff:127.0.0.1 , 10.0.0.5')).toBe(true);
+    // Not loopback — must stay rate-limited.
+    expect(isLoopbackIp('::ffff:10.0.0.1')).toBe(false);
+    expect(isLoopbackIp('128.0.0.1')).toBe(false);
+  });
 });
