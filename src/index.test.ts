@@ -76,6 +76,34 @@ describe('createRateLimiter — hard bucket', () => {
     await rl.resetHard('user:k');
     expect((await rl.checkHard('user:k')).ok).toBe(true);
   });
+
+  it('an expired lockout does NOT re-lock on the first new failure (audit P-023)', async () => {
+    // windowMs > lockoutMs (like the defaults, 15m vs 5m): after the lockout
+    // lapses, the original burns are still inside the window — the old code
+    // counted them again and re-locked on the very next burnHard.
+    const store = memStore();
+    const rl = createRateLimiter({
+      store,
+      hard: { windowMs: 15 * 60_000, capacity: 3, lockoutMs: 5 * 60_000 },
+    });
+    for (let i = 0; i < 3; i++) await rl.burnHard('user:k');
+    expect((await rl.checkHard('user:k')).ok).toBe(false);
+
+    // Simulate the lockout lapsing (burn timestamps stay in-window).
+    const bucket = store.map.get('user:k')!;
+    store.map.set('user:k', { ...bucket, lockedUntilMs: Date.now() - 1 });
+    expect((await rl.checkHard('user:k')).ok).toBe(true);
+
+    // First post-lockout failure: a fresh strike, NOT an instant re-lock.
+    await rl.burnHard('user:k');
+    expect((await rl.checkHard('user:k')).ok).toBe(true);
+    expect(store.map.get('user:k')!.recent).toHaveLength(1);
+
+    // Capacity fresh failures still re-lock normally.
+    await rl.burnHard('user:k');
+    await rl.burnHard('user:k');
+    expect((await rl.checkHard('user:k')).ok).toBe(false);
+  });
 });
 
 describe('config + clearPrefix', () => {

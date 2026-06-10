@@ -161,7 +161,13 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const now = Date.now();
       const bucket = normalize(await store.read(key));
       const cutoff = now - hard.windowMs;
-      const recent = bucket.recent.filter((ts) => ts > cutoff);
+      // An EXPIRED lockout consumed its burn set. Without this, whenever
+      // windowMs > lockoutMs (true for the defaults: 15m vs 5m) the old
+      // failures are still inside the window after the lockout lapses, so
+      // the FIRST new failure instantly re-locks (audit P-023).
+      const lockoutExpired = bucket.lockedUntilMs > 0 && bucket.lockedUntilMs <= now;
+      const base = lockoutExpired ? [] : bucket.recent;
+      const recent = base.filter((ts) => ts > cutoff);
       recent.push(now);
       const lockedUntilMs = recent.length >= hard.capacity ? now + hard.lockoutMs : 0;
       await store.write(key, { recent, lockedUntilMs });
