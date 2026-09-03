@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 coverage/
+coverage-*/
 junit.xml
 .DS_Store
 
